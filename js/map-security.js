@@ -1,4 +1,4 @@
-/* map-security.js — security map logic (SPF + DMARC) for unified DACH view */
+/* map-security.js — security map logic (SPF + DMARC), with MTA-STS policy status */
 
 var SEC_COLOR_SCHEMES = {
   default: {
@@ -47,6 +47,19 @@ function dmarcLabel(dss) {
   if (dss.has_good_dmarc) return { text: 'Good (p=reject)', cls: 'sec-good' };
   if (dss.has_dmarc) return { text: 'Present (not enforced)', cls: 'sec-partial' };
   return { text: 'Missing', cls: 'sec-missing' };
+}
+
+function mtaStsLabel(summary) {
+  if (!summary) return { text: 'Not checked', cls: 'sec-partial' };
+  switch (summary.status) {
+    case 'enforce': return { text: 'Enforce', cls: 'sec-good' };
+    case 'testing': return { text: 'Testing (not enforced)', cls: 'sec-partial' };
+    case 'none': return { text: 'Disabled (mode=none)', cls: 'sec-missing' };
+    case 'not_configured': return { text: 'Not configured', cls: 'sec-missing' };
+    case 'invalid': return { text: 'Invalid configuration', cls: 'sec-missing' };
+    case 'unreachable': return { text: 'Check failed', cls: 'sec-partial' };
+    default: return { text: 'Not checked', cls: 'sec-partial' };
+  }
 }
 
 function secLegendItem(label, colorKey, count) {
@@ -217,11 +230,14 @@ function loadSecurityMap(mapConfig, countries) {
 
             var spf = spfLabel(m.dss);
             var dmarc = dmarcLabel(m.dss);
+            var mtaSts = mtaStsLabel(m.mta_sts);
+            var mtaStsDetail = escapeHtml(m.mta_sts && m.mta_sts.error || 'Published policy mode; mail server compliance is not checked').replace(/"/g, '&quot;');
 
             var statusHtml =
               '<div class="sec-status">' +
               '<div class="sec-row"><span class="sec-label">SPF</span><span class="sec-badge ' + spf.cls + '">' + spf.text + '</span></div>' +
               '<div class="sec-row"><span class="sec-label">DMARC</span><span class="sec-badge ' + dmarc.cls + '">' + dmarc.text + '</span></div>' +
+              '<div class="sec-row"><span class="sec-label">MTA-STS</span><span class="sec-badge ' + mtaSts.cls + '" title="' + mtaStsDetail + '">' + mtaSts.text + '</span></div>' +
               '</div>';
 
             // MX section

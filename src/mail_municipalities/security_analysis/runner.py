@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import shutil
 import subprocess
@@ -14,6 +15,7 @@ from loguru import logger
 
 from .defaults import DEFAULTS
 from .models import DaneSummary, DssSummary, MunicipalitySecurity, SecurityOutput
+from .mta_sts import scan_mta_sts
 
 # Path to the security_test directory (sibling of mail_municipalities under src/)
 _SECURITY_TEST_DIR = Path(__file__).resolve().parents[2] / "security_test"
@@ -274,6 +276,7 @@ def build_output(domains_path: Path, domain_security: dict[str, dict], cc: str) 
                 mx_records=sec.get("mx_records", []),
                 dane=sec.get("dane"),
                 dss=sec.get("dss"),
+                mta_sts=sec.get("mta_sts"),
                 scan_valid=sec.get("scan_valid", False),
             )
         )
@@ -297,6 +300,8 @@ def build_output(domains_path: Path, domain_security: dict[str, dict], cc: str) 
         "good_dmarc": sum(1 for m in municipalities if m.dss and m.dss.has_good_dmarc),
         "dkim": sum(1 for m in municipalities if m.dss and m.dss.has_dkim),
     }
+    for status in ("testing", "enforce", "none", "not_configured", "invalid", "unreachable"):
+        counts[f"mta_sts_{status}"] = sum(1 for m in municipalities if m.mta_sts and m.mta_sts.status == status)
 
     return SecurityOutput(
         generated=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -342,12 +347,21 @@ def run(domains_path: Path, output_path: Path, *, cc: str, verbose: bool = False
     evaluator_result = run_docker_evaluator(security_test_dir, compose_cmd, cc, verbose)
     logger.info("Evaluator completed in {:.1f}s", time.monotonic() - t1)
 
-    # Phase 4: Transform output
-    logger.info("Phase 4: Building output")
+    # Phase 4: Check the published MTA-STS mode independently of Docker results
+    logger.info("Phase 4: Checking MTA-STS policies (DNS/HTTPS)")
+    with open(domains_path, encoding="utf-8") as f:
+        domain_data = json.load(f)
+    domains = [domain for muni in domain_data["municipalities"] for domain in muni.get("emails", []) if domain]
+    mta_sts_results = asyncio.run(scan_mta_sts(domains))
+
+    # Phase 5: Transform output
+    logger.info("Phase 5: Building output")
     with open(evaluator_result, encoding="utf-8") as f:
         rows = json.load(f)
 
     domain_security = build_domain_security(rows)
+    for domain, summary in mta_sts_results.items():
+        domain_security.setdefault(domain, {})["mta_sts"] = summary
     output = build_output(domains_path, domain_security, cc)
 
     # Write output
@@ -357,6 +371,13 @@ def run(domains_path: Path, output_path: Path, *, cc: str, verbose: bool = False
 
     size_kb = output_path.stat().st_size / 1024
     logger.info("Wrote {} ({:.0f} KB)", output_path, size_kb)
+    logger.info(
+        "MTA-STS: {} testing, {} enforce, {} disabled, {} not configured, {} invalid, {} unreachable",
+        *(
+            output.counts[f"mta_sts_{status}"]
+            for status in ("testing", "enforce", "none", "not_configured", "invalid", "unreachable")
+        ),
+    )
     logger.info(
         "--- Security scan: {} municipalities, {} scanned, {} with SPF, {} with DMARC, {} with DKIM ---",
         output.total,

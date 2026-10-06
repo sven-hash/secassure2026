@@ -13,7 +13,7 @@ Automated pipeline to collect email domains, classify email providers, and analy
 
 1. **Resolve** — Collect municipality websites from official registries and Wikidata, scrape for email addresses, validate via DNS/MX, and produce a municipality-to-domain mapping.
 2. **Classify** — Fingerprint DNS records (MX, SPF, autodiscover, SMTP banners, ASN) to determine email provider (Microsoft 365, Google Workspace, AWS, domestic hosting, etc.).
-3. **Scan** — Evaluate DANE/DNSSEC and email authentication (SPF, DMARC) per domain via a Kotlin/Docker scanner.
+3. **Scan** — Evaluate DANE/DNSSEC and email authentication (SPF, DMARC) per domain via a Kotlin/Docker scanner, plus MTA-STS policy modes via Python DNS/HTTPS checks.
 
 ## How to run
 
@@ -23,10 +23,19 @@ Install [`uv`](https://docs.astral.sh/uv/getting-started/installation/), then:
 uv sync                               # install deps
 uv run resolve <ch|de|at|--all>       # Stage 1: resolve email domains
 uv run classify <ch|de|at>            # Stage 2: classify providers
-uv run scan <ch|de|at>                # Stage 3: DANE/SPF/DMARC (requires Docker)
+uv run scan <ch|de|at>                # Stage 3: DANE/SPF/DMARC/MTA-STS (requires Docker)
 ```
 
 Common flags: `--dry-run`, `-v`, `--no-cache`. See `uv run <cmd> --help`.
+
+MTA-STS results use `mta_sts.status`: `testing`, `enforce`, `none` (disabled),
+`not_configured` (no discovery record), `invalid`, or `unreachable`. A null
+`mta_sts` means not checked, including older results and municipalities without
+an email domain. Checks validate the discovery record and HTTPS policy syntax
+using [RFC 8461](https://www.rfc-editor.org/rfc/rfc8461.html); they do not test
+SMTP server compliance, attribute hosting, or check TLS reporting. Per-status
+municipality counts are included in the output and scan log, and the policy
+status appears in the security map popup after a new scan.
 
 > [!IMPORTANT]
 > This tool requires unrestricted outbound port 25 (SMTP). Most residential ISPs and laptops block this.
@@ -47,20 +56,41 @@ Results are written to `output/`:
 | | `domains/domains_{cc}_review.json` | Low-confidence entries for manual review |
 | Classify | `providers/providers_{cc}.json` | Provider, confidence, evidence signals, gateway |
 | | `providers/providers_{cc}.min.json` | Minified for frontend consumption |
-| Scan | `security/security_{cc}.json` | DANE, SPF, DMARC assessment per municipality |
+| Scan | `security/security_{cc}.json` | DANE, SPF, DMARC and MTA-STS assessment per municipality |
 | Export | `export.xlsx` | Combined workbook: all municipalities + statistics |
 
 ## Maps
 
-Interactive Leaflet maps visualizing email provider distribution and security posture are available in the `maps/` directory. 
+Interactive Leaflet maps visualize email provider distribution and security posture.
+
+With Docker running, collect security data for the three countries sequentially
+from the project root (reuse the existing domain files, or run `uv run resolve
+<cc>` first if they are missing):
+
+```bash
+uv sync
+uv run scan ch -v
+uv run scan de -v
+uv run scan at -v
+```
+
+The Python wrapper builds and runs the scanner and evaluator containers, checks
+MTA-STS, and writes `output/security/security_{cc}.json`. Running only Docker
+Compose does not perform the Python MTA-STS check. On Apple Silicon, use
+`DOCKER_DEFAULT_PLATFORM=linux/amd64 uv run scan <cc> -v` because the scanner
+bundles x86-64 binaries. Run scans sequentially because containers share input
+and result directories.
 
 To view them:
 
 ```bash
-python3 -m http.server              # from the project root
+python3 -m http.server 8000 --bind 127.0.0.1  # from the project root
 ```
 
-Now open http://localhost:8000/maps/ in a browser.
+Open http://localhost:8000/security.html and click a municipality to see its
+MTA-STS status. The map loads all three country files; previously collected
+files can be reused, but MTA-STS will show “Not checked” until they are rescanned.
+The provider map is at http://localhost:8000/providers.html.
 
 ## Paper
 

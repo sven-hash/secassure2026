@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -24,6 +26,16 @@ class DssSummary(BaseModel):
     has_dkim: bool = False
 
 
+MtaStsStatus = Literal["testing", "enforce", "none", "not_configured", "invalid", "unreachable"]
+
+
+class MtaStsSummary(BaseModel):
+    """Currently published MTA-STS mode; does not verify MX server compliance."""
+
+    status: MtaStsStatus
+    error: str | None = None
+
+
 class MunicipalitySecurity(BaseModel):
     """Security assessment for a single municipality's email domain."""
 
@@ -34,6 +46,7 @@ class MunicipalitySecurity(BaseModel):
     mx_records: list[str] = []
     dane: DaneSummary | None = None
     dss: DssSummary | None = None
+    mta_sts: MtaStsSummary | None = None
     scan_valid: bool = False
     override: dict[str, str] | None = None
 

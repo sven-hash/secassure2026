@@ -40,6 +40,22 @@ class TestMakeResolvers:
 
 
 class TestResolveRobust:
+    async def test_strict_failure_raises(self):
+        with patch("mail_municipalities.core.dns.get_resolvers") as mock_get:
+            resolver = MagicMock()
+            resolver.resolve = AsyncMock(side_effect=dns.exception.Timeout())
+            mock_get.return_value = [resolver]
+            with pytest.raises(dns.exception.DNSException):
+                await resolve_robust("example.com", "TXT", raise_on_failure=True)
+
+    @pytest.mark.parametrize("error", [dns.resolver.NXDOMAIN(), dns.resolver.NoAnswer()])
+    async def test_strict_absence_returns_none(self, error):
+        with patch("mail_municipalities.core.dns.get_resolvers") as mock_get:
+            resolver = MagicMock()
+            resolver.resolve = AsyncMock(side_effect=error)
+            mock_get.return_value = [resolver]
+            assert await resolve_robust("example.com", "TXT", raise_on_failure=True) is None
+
     async def test_success_first_resolver(self):
         mock_answer = MagicMock()
         with patch("mail_municipalities.core.dns.get_resolvers") as mock_get:

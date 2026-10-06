@@ -165,7 +165,7 @@ def scan_cmd(
         typer.Option("-o", "--output", help="Custom output directory"),
     ] = None,
 ) -> None:
-    """Run security scan (DANE, SPF, DKIM, DMARC) for municipalities."""
+    """Run security scan (DANE, SPF, DKIM, DMARC, MTA-STS) for municipalities."""
     output_dir = output or Path("output/security")
     setup_logging(verbose, log_path=output_dir / f"scan_{country}.log")
 
@@ -438,7 +438,7 @@ def _scan_main(
         typer.Option("-o", "--output", help="Custom output directory"),
     ] = None,
 ) -> None:
-    """Run security scan (DANE, SPF, DKIM, DMARC) for municipalities."""
+    """Run security scan (DANE, SPF, DKIM, DMARC, MTA-STS) for municipalities."""
     output_dir = output or Path("output/security")
     setup_logging(verbose, log_path=output_dir / f"scan_{country}.log")
 

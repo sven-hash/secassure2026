@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 
 import dns.asyncresolver
+import dns.exception
 import dns.resolver
 from loguru import logger
 
@@ -40,8 +41,8 @@ def reset_resolvers() -> None:
     _resolvers = None
 
 
-async def resolve_robust(qname: str, rdtype: str) -> dns.resolver.Answer | None:
-    """DNS query with multi-resolver fallback."""
+async def resolve_robust(qname: str, rdtype: str, *, raise_on_failure: bool = False) -> dns.resolver.Answer | None:
+    """DNS query with fallback; optionally raise when every resolver fails."""
     resolvers = get_resolvers()
     for i, resolver in enumerate(resolvers):
         try:
@@ -56,6 +57,8 @@ async def resolve_robust(qname: str, rdtype: str) -> dns.resolver.Answer | None:
         except Exception:
             logger.trace("DNS {}/{}: error on resolver {}", qname, rdtype, i)
     logger.warning("DNS {}/{}: all resolvers exhausted", qname, rdtype)
+    if raise_on_failure:
+        raise dns.exception.DNSException(f"DNS {qname}/{rdtype}: all resolvers exhausted")
     return None
 
 
