@@ -37,6 +37,21 @@ SMTP server compliance, attribute hosting, or check TLS reporting. Per-status
 municipality counts are included in the output and scan log, and the policy
 status appears in the security map popup after a new scan.
 
+To run just MTA-STS, without Docker or SMTP port 25 access:
+
+```bash
+uv run scan ch --mta-sts-only -v
+uv run scan de --mta-sts-only -v
+uv run scan at --mta-sts-only -v
+```
+
+This updates `output/security/security_{cc}.json` in place, preserving existing
+SPF, DMARC, DANE, overrides, and the original scan metadata. It checks the
+domains already in those results and records a separate `mta_sts_generated`
+timestamp. If no security file exists, it creates one from
+`output/domains/domains_{cc}.json`; the other security checks remain unchecked.
+Refresh the security map after the command finishes.
+
 > [!IMPORTANT]
 > This tool requires unrestricted outbound port 25 (SMTP). Most residential ISPs and laptops block this.
 > For best results, run from a cloud VM with port 25 access opened.

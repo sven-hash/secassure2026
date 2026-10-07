@@ -6,6 +6,7 @@ import asyncio
 import json
 import shutil
 import subprocess
+import tempfile
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -315,8 +316,68 @@ def build_output(domains_path: Path, domain_security: dict[str, dict], cc: str) 
 # ── Top-level orchestrator ─────────────────────────────────────────────
 
 
-def run(domains_path: Path, output_path: Path, *, cc: str, verbose: bool = False) -> None:
-    """Run the full security scan pipeline for a country."""
+def run_mta_sts_only(domains_path: Path, output_path: Path) -> None:
+    """Refresh MTA-STS in place, preserving all existing rows and other results."""
+    generated = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    if output_path.exists():
+        with open(output_path, encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        with open(domains_path, encoding="utf-8") as f:
+            domain_data = json.load(f)
+        municipalities = [
+            MunicipalitySecurity(
+                code=muni["code"],
+                name=muni["name"],
+                region=muni.get("region", ""),
+                domain=next(iter(muni.get("emails", [])), ""),
+            )
+            for muni in domain_data["municipalities"]
+        ]
+        municipalities.sort(key=lambda m: m.code)
+        data = SecurityOutput(
+            generated=generated,
+            total=len(municipalities),
+            counts=dict.fromkeys(("scanned", "dane_supported", "spf", "good_spf", "dmarc", "good_dmarc", "dkim"), 0),
+            municipalities=municipalities,
+        ).model_dump()
+
+    # Use domains already associated with security rows to avoid attaching a new
+    # domain's policy to another domain's historical SPF/DMARC/DANE results.
+    municipalities = data["municipalities"]
+    domains = [muni["domain"] for muni in municipalities if muni.get("domain")]
+    logger.info("Checking MTA-STS only for {} unique domains (no Docker)", len(set(domains)))
+    results = asyncio.run(scan_mta_sts(domains))
+    for muni in municipalities:
+        result = results.get(muni.get("domain", ""))
+        muni["mta_sts"] = result.model_dump() if result else None
+
+    counts = data.setdefault("counts", {})
+    for status in ("testing", "enforce", "none", "not_configured", "invalid", "unreachable"):
+        counts[f"mta_sts_{status}"] = sum(
+            1 for muni in municipalities if (muni.get("mta_sts") or {}).get("status") == status
+        )
+    # Keep the original scan timestamp and commit; only MTA-STS was refreshed.
+    data["mta_sts_generated"] = generated
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=output_path.parent, delete=False) as f:
+        temporary_path = Path(f.name)
+        try:
+            json.dump(data, f, ensure_ascii=False, indent=2, separators=(",", ":"))
+            f.close()
+            temporary_path.chmod(output_path.stat().st_mode & 0o777 if output_path.exists() else 0o644)
+            temporary_path.replace(output_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+    logger.info("Wrote MTA-STS results to {}", output_path)
+    logger.info("MTA-STS counts: {}", {key: value for key, value in counts.items() if key.startswith("mta_sts_")})
+
+
+def run(domains_path: Path, output_path: Path, *, cc: str, verbose: bool = False, mta_sts_only: bool = False) -> None:
+    """Run the security pipeline or refresh only the MTA-STS policy results."""
+    if mta_sts_only:
+        run_mta_sts_only(domains_path, output_path)
+        return
     security_test_dir = _SECURITY_TEST_DIR
     if not security_test_dir.exists():
         msg = f"Security test directory not found: {security_test_dir}"

@@ -11,7 +11,15 @@ uv run scan ch    # scan Swiss municipalities
 uv run scan de    # scan German municipalities
 uv run scan at    # scan Austrian municipalities
 uv run scan ch -v # verbose (streams Docker output)
+uv run scan ch --mta-sts-only -v # DNS/HTTPS only; no Docker required
 ```
+
+`--mta-sts-only` refreshes the policy status in
+`output/security/security_{cc}.json`, preserving other security results. If
+that file exists, its domains are scanned without requiring domain resolver
+output. Otherwise, a new file is created from `output/domains/domains_{cc}.json`
+with the other checks left unchecked. The MTA-STS-only check runs in Python,
+requires DNS/HTTPS access, and does not need outbound SMTP port 25.
 
 ## Prerequisites
 

@@ -55,6 +55,7 @@ class SecurityOutput(BaseModel):
     """Top-level output envelope for security scan results."""
 
     generated: str
+    mta_sts_generated: str | None = None
     commit: str | None = None
     total: int
     counts: dict[str, int]

@@ -164,6 +164,12 @@ def scan_cmd(
         Optional[Path],
         typer.Option("-o", "--output", help="Custom output directory"),
     ] = None,
+    mta_sts_only: Annotated[
+        bool,
+        typer.Option(
+            "--mta-sts-only", help="Only check MTA-STS, preserving existing security results; no Docker needed"
+        ),
+    ] = False,
 ) -> None:
     """Run security scan (DANE, SPF, DKIM, DMARC, MTA-STS) for municipalities."""
     output_dir = output or Path("output/security")
@@ -174,7 +180,7 @@ def scan_cmd(
 
     from mail_municipalities.security_analysis.runner import run
 
-    run(domains_path, output_path, cc=country, verbose=verbose)
+    run(domains_path, output_path, cc=country, verbose=verbose, mta_sts_only=mta_sts_only)
 
 
 # ── Analyze subcommands ──────────────────────────────────────────────
@@ -437,6 +443,12 @@ def _scan_main(
         Optional[Path],
         typer.Option("-o", "--output", help="Custom output directory"),
     ] = None,
+    mta_sts_only: Annotated[
+        bool,
+        typer.Option(
+            "--mta-sts-only", help="Only check MTA-STS, preserving existing security results; no Docker needed"
+        ),
+    ] = False,
 ) -> None:
     """Run security scan (DANE, SPF, DKIM, DMARC, MTA-STS) for municipalities."""
     output_dir = output or Path("output/security")
@@ -447,7 +459,7 @@ def _scan_main(
 
     from mail_municipalities.security_analysis.runner import run
 
-    run(domains_path, output_path, cc=country, verbose=verbose)
+    run(domains_path, output_path, cc=country, verbose=verbose, mta_sts_only=mta_sts_only)
 
 
 def resolve() -> None:
